@@ -1,0 +1,73 @@
+- name: Install Docker on Ubuntu 20.04
+  hosts: myhosts
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Update apt package cache (again)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Docker
+      apt:
+        name: docker-ce
+        state: present
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add user to Docker group
+      command: usermod -aG docker {{ ansible_user }}
+      ignore_errors: yes
+
+    - name: Install CRI-Docker
+      shell: |
+        VER=$(curl -s https://api.github.com/repos/Mirantis/cri-dockerd/releases/latest|grep tag_name | cut -d '"' -f 4|sed 's/v//g')
+        echo $VER
+        wget https://github.com/Mirantis/cri-dockerd/releases/download/v${VER}/cri-dockerd-${VER}.amd64.tgz
+        tar xvf cri-dockerd-${VER}.amd64.tgz
+        mv cri-dockerd/cri-dockerd /usr/local/bin/
+        chmod +x /usr/local/bin/cri-dockerd
+        wget https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.service
+        wget https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.socket
+        mv cri-docker.socket cri-docker.service /etc/systemd/system/
+        sed -i -e 's,/usr/bin/cri-dockerd,/usr/local/bin/cri-dockerd,' /etc/systemd/system/cri-docker.service
+        systemctl daemon-reload
+        systemctl enable cri-docker.service
+        systemctl enable --now cri-docker.socket
+
+        systemctl restart docker && systemctl restart cri-docker
+        systemctl status cri-docker.socket --no-pager 
+
+      args:
+        executable: /bin/bash
+      become: yes
+      become_method: sudo
+      ignore_errors: yes  # 이미 설치되어 있을 수 있으므로 오류 무시
