@@ -40,5 +40,3 @@ ansible-playbook join_k8s.yaml
 ```
 
 ```
-
-# devops-playbook
