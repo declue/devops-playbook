@@ -1,0 +1,39 @@
+---
+- name: Setup Kubernetes with CRI-O
+  hosts: myhosts
+  become: yes
+  tasks:
+    - name: Check if Kubernetes is already initialized
+      shell: kubeadm token list
+      register: kubeadm_check
+      failed_when: false
+      changed_when: false
+      become: no
+
+    - name: Reset Kubernetes if it is already initialized
+      command: sudo kubeadm reset --force --cri-socket=/var/run/cri-dockerd.sock
+      when: kubeadm_check.rc == 0
+      ignore_errors: True
+
+    - name: Initialize Kubernetes Cluster using kubeadm with CRI-O
+      command: kubeadm init --pod-network-cidr=192.168.0.0/16 --cri-socket=/var/run/cri-dockerd.sock
+
+    - name: create .kube directory
+      become: yes
+      file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        mode: 0755
+
+    - name: copy admin.conf
+      copy:
+        remote_src: yes
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        owner: "{{ ansible_user }}"
+
+    - name: Install calico Pod network
+      become: no
+      shell:  kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+    
+    
